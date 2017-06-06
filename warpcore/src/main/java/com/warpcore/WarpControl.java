@@ -3,6 +3,7 @@ package com.warpcore;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothSocket;
+import android.content.Intent;
 import android.support.v7.app.ActionBar;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
@@ -29,7 +30,7 @@ import java.io.IOException;
  * status bar and navigation/system bar) with user interaction.
  */
 public class WarpControl extends AppCompatActivity {
-    private ConnectedThread mConn;
+    private ConnectedThread mConn = null;
     private final UUID mModemUUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
 
     // Called whenever the activity is resumed (or started)
@@ -52,7 +53,11 @@ public class WarpControl extends AppCompatActivity {
             mConn = new ConnectedThread(device);
             mConn.run();
         } catch (IOException e) {
+            Toast.makeText(getApplicationContext(), "Failed to connect: "+ e.getMessage(), Toast.LENGTH_SHORT).show();
 
+            // Return to the connection screen
+            Intent i = new Intent(getApplicationContext(), Connect.class);
+            startActivity(i);
         }
     }
 

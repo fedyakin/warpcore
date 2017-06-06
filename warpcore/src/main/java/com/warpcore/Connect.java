@@ -21,7 +21,7 @@ import java.util.*;
  * An example full-screen activity that shows and hides the system UI (i.e.
  * status bar and navigation/system bar) with user interaction.
  */
-public class Connect extends AppCompatActivity implements AdapterView.OnItemSelectedListener {
+public class Connect extends AppCompatActivity {
     private static final int REQUEST_ENABLE_BT = 1;
 
     // Device holds information about available bluetooth devices in the selection spinner
@@ -43,10 +43,6 @@ public class Connect extends AppCompatActivity implements AdapterView.OnItemSele
     @Override
     protected void onStart() {
         super.onStart();
-
-        // Disable the connect button, until we know we have bluetooth
-        Button btnConnect = (Button)findViewById(R.id.btnConnect);
-        btnConnect.setEnabled(false);
 
         // If the device doesn't support bluetooth, nothing we can do.
         BluetoothAdapter bt = BluetoothAdapter.getDefaultAdapter();
@@ -95,28 +91,17 @@ public class Connect extends AppCompatActivity implements AdapterView.OnItemSele
         ArrayAdapter<Device> adapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, devices);
         Spinner spinDevices = (Spinner)findViewById(R.id.spinDevices);
         spinDevices.setAdapter(adapter);
-
-        // this activity implements the item selection listener
-        // tell the spinner to notify us on selection changes
-        spinDevices.setOnItemSelectedListener(this);
     }
 
-    // An item in the spinner was selected, enable the connect button
-    public void onItemSelected(AdapterView<?> parent, View view, int pos, long id) {
-        Button btnConnect = (Button)findViewById(R.id.btnConnect);
-        btnConnect.setEnabled(true);
-    }
-
-    // Nothing in the spinner was selected, disable the connect button
-    public void onNothingSelected(AdapterView parent) {
-        Button btnConnect = (Button)findViewById(R.id.btnConnect);
-        btnConnect.setEnabled(false);
-    }
-
-    public void onConnect() {
+    public void onConnect(View view) {
         Spinner spinDevices = (Spinner)findViewById(R.id.spinDevices);
-        Device selectedDevice = (Device)spinDevices.getItemAtPosition(spinDevices.getSelectedItemPosition());
+        int selected = spinDevices.getSelectedItemPosition();
+        if (selected == -1) {
+            Toast.makeText(getApplicationContext(), "No paired device selected", Toast.LENGTH_SHORT).show();
+            return;
+        }
 
+        Device selectedDevice = (Device)spinDevices.getItemAtPosition(selected);
         Intent i = new Intent(getApplicationContext(), WarpControl.class);
         i.putExtra("address", selectedDevice.address);
         startActivity(i);
