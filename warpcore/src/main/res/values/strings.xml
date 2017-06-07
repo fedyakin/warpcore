@@ -4,4 +4,7 @@
     <string name="dummy_content">DUMMY\nCONTENT</string>
 
     <string name="title_activity_warp_control">WarpControl</string>
+    <string name="title_activity_connect">Connect</string>
+
+    <string name="action_connect">Connect</string>
 </resources>
