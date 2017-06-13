@@ -28,7 +28,8 @@
             android:enabled="true"
             android:exported="true" />
 
-        <activity android:name=".RawComm"></activity>
+        <activity android:name=".RawComm" />
+        <activity android:name=".EngineControl"></activity>
     </application>
 
 </manifest>

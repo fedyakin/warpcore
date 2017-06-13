@@ -7,7 +7,9 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
 import android.os.Bundle;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Message;
 import android.support.v7.app.AppCompatActivity;
 import android.view.View;
 import android.widget.ArrayAdapter;
@@ -17,11 +19,12 @@ import android.widget.Toast;
 import java.util.ArrayList;
 import java.util.Set;
 
-public class ConnectActivity extends AppCompatActivity implements CommService.Callbacks {
+public class ConnectActivity extends AppCompatActivity {
     private static final int REQUEST_ENABLE_BT = 1;
 
     CommService mService;
     boolean mBound = false;
+    Handler mHandler = new Handler(new CommCallback());
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -52,6 +55,14 @@ public class ConnectActivity extends AppCompatActivity implements CommService.Ca
         }
     }
 
+    @Override
+    protected void onDestroy() {
+        if (mBound) {
+            mService.removeHandler(mHandler);
+        }
+        super.onDestroy();
+    }
+
     /**
      * Defines callbacks for service binding, passed to bindService()
      */
@@ -63,7 +74,7 @@ public class ConnectActivity extends AppCompatActivity implements CommService.Ca
             CommService.LocalBinder binder = (CommService.LocalBinder) service;
             mService = binder.getService();
             mBound = true;
-            mService.setCallbacks(ConnectActivity.this);
+            mService.addHandler(mHandler);
         }
 
         @Override
@@ -115,17 +126,21 @@ public class ConnectActivity extends AppCompatActivity implements CommService.Ca
         mService.connect(selectedDevice.mDevice);
     }
 
-    public void onConnected() {
-        synchronized (this) {
-            Intent i = new Intent(getApplicationContext(), RawComm.class);
-            startActivity(i);
+
+    private class CommCallback implements Handler.Callback {
+        @Override
+        public boolean handleMessage(Message message) {
+            switch (message.getData().getInt("event")) {
+                case CommService.CONNECTED:
+                    onConnected();
+            }
+            return true;
         }
     }
 
-    public void onDisconnected() {
-    }
-
-    public void onMessage(byte[] data, int len) {
+    public void onConnected() {
+        Intent i = new Intent(getApplicationContext(), RawComm.class);
+        startActivity(i);
     }
 }
 

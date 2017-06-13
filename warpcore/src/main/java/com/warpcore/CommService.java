@@ -5,34 +5,27 @@ import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothSocket;
 import android.content.Intent;
 import android.os.Binder;
+import android.os.Bundle;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Message;
 import android.widget.Toast;
 
+import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
-import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.UUID;
 
 public class CommService extends Service {
-    public interface Callbacks {
-        void onConnected();
-
-        void onDisconnected();
-
-        void onMessage(byte[] data, int len);
-    }
-
     // This is the object that receives interactions from clients.  See
     // RemoteService for a more complete example.
     private final IBinder mBinder = new LocalBinder();
-    private Callbacks mCallbacks;
+    private final ArrayList<Handler> mHandlers = new ArrayList<>();
 
     // Thread containing the actual bluetooth processing
     private ConnectedThread mConn = null;
-
-    // UUID for the hc-o6
-    private final UUID mModemUUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
 
     /**
      * Class for clients to access.  Because we know this service always
@@ -50,68 +43,79 @@ public class CommService extends Service {
         return mBinder;
     }
 
-    public void setCallbacks(Callbacks callbacks) {
-        mCallbacks = callbacks;
-    }
+    public static final int CONNECTED = 1;
+    public static final int DISCONNECTED = 2;
+    public static final int MESSAGE = 3;
 
-    public void connect(BluetoothDevice device) {
-        synchronized (this) {
-            try {
-                mConn = new ConnectedThread(device);
-                if (mCallbacks != null) {
-                    mCallbacks.onConnected();
-                }
-            } catch (IOException e) {
-                Toast.makeText(getApplicationContext(), "Failed to connect: " + e.getMessage(), Toast.LENGTH_SHORT).show();
-            }
+    public void addHandler(Handler handler) {
+        synchronized (mHandlers) {
+            mHandlers.add(handler);
         }
     }
 
+    public void removeHandler(Handler handler) {
+        synchronized (mHandlers) {
+            mHandlers.remove(handler);
+        }
+    }
+
+    public void connect(BluetoothDevice device) {
+        if (mConn != null ) {
+            mConn.cancel();
+            mConn.interrupt();
+        }
+        mConn = new ConnectedThread(device);
+        mConn.start();
+    }
+
     public void send(byte[] data) {
-        synchronized (this) {
-            if (mConn != null) {
-                mConn.write(data);
-            }
+        if (mConn != null) {
+            mConn.write(data);
         }
     }
 
     private class ConnectedThread extends Thread {
-        private final BluetoothSocket mSocket;
-        private final InputStream mInStream;
-        private final OutputStream mOutStream;
+        // UUID for the hc-o6
+        private final UUID mModemUUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
 
-        public ConnectedThread(BluetoothDevice device) throws IOException {
-            mSocket = device.createRfcommSocketToServiceRecord(mModemUUID);
-            mSocket.connect();
-            mInStream = mSocket.getInputStream();
-            mOutStream = mSocket.getOutputStream();
+        private final BluetoothDevice mDevice;
+        private BluetoothSocket mSocket;
+        private BufferedReader mInput;
+        private OutputStream mOutput;
+
+        public ConnectedThread(BluetoothDevice device) {
+            mDevice = device;
         }
 
         public void run() {
-            byte[] buffer = new byte[1024];
-            int numBytes;
+            try {
+                mSocket = mDevice.createRfcommSocketToServiceRecord(mModemUUID);
+                mSocket.connect();
+                mInput = new BufferedReader(new InputStreamReader(mSocket.getInputStream()));
+                mOutput = mSocket.getOutputStream();
 
-            // Keep listening to the InputStream until an exception occurs.
-            while (true) {
-                try {
-                    numBytes = mInStream.read(buffer);
-                    if (mCallbacks != null) {
-                        mCallbacks.onMessage(Arrays.copyOf(buffer, numBytes), numBytes);
+                // Keep listening to the InputStream until an exception occurs.
+                emitConnected();
+                while (mSocket.isConnected() && !Thread.interrupted()) {
+                    try {
+                        String line = mInput.readLine();
+                        emitMessage(line);
+                    } catch (IOException e) {
+                        Toast.makeText(getApplicationContext(), "Failed to read from device: " + e.getMessage(), Toast.LENGTH_SHORT).show();
                     }
-                } catch (IOException e) {
-                    Toast.makeText(getApplicationContext(), "Failed to read from device: " + e.getMessage(), Toast.LENGTH_SHORT).show();
-                    if (mCallbacks != null) {
-                        mCallbacks.onDisconnected();
-                    }
-                    break;
                 }
+            } catch (IOException e) {
+                Toast.makeText(getApplicationContext(), "Failed to connect: " + e.getMessage(), Toast.LENGTH_SHORT).show();
             }
+
+            emitDisconnected();
         }
 
         // Call this from the main activity to send data to the remote device.
         public void write(byte[] bytes) {
             try {
-                mOutStream.write(bytes);
+                mOutput.write(bytes);
+                mOutput.flush();
             } catch (IOException e) {
                 Toast.makeText(getApplicationContext(), "Failed to write to device: " + e.getMessage(), Toast.LENGTH_SHORT).show();
             }
@@ -123,6 +127,38 @@ public class CommService extends Service {
                 mSocket.close();
             } catch (IOException e) {
                 Toast.makeText(getApplicationContext(), "Error closing socket: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+            }
+        }
+
+
+        private void emitConnected() {
+            Bundle msgBundle = new Bundle();
+            msgBundle.putInt("event", CONNECTED);
+            sendBundle(msgBundle);
+        }
+
+        private void emitDisconnected() {
+            Bundle msgBundle = new Bundle();
+            msgBundle.putInt("event", DISCONNECTED);
+            sendBundle(msgBundle);
+        }
+
+        private void emitMessage(String data) {
+            Bundle msgBundle = new Bundle();
+            msgBundle.putInt("event", MESSAGE);
+            msgBundle.putString("data", data);
+            sendBundle(msgBundle);
+        }
+
+        private void sendBundle(Bundle msgBundle) {
+            synchronized (CommService.this.mHandlers) {
+                for (Handler handler : CommService.this.mHandlers) {
+                    Message msg = handler.obtainMessage();
+                   // Message msg = new Message();
+                    msg.setData(msgBundle);
+                   // handler.sendMessage(msg);
+                    msg.sendToTarget();
+                }
             }
         }
     }
