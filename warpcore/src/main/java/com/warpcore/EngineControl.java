@@ -8,15 +8,17 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Message;
+import android.support.annotation.IdRes;
 import android.support.v7.app.AppCompatActivity;
-import android.view.View;
 import android.widget.RadioButton;
+import android.widget.RadioGroup;
 import android.widget.SeekBar;
+import android.widget.Toast;
 
 public class EngineControl extends AppCompatActivity {
-    private Settings currentSettings;
+    private Settings currentSettings = new Settings();
 
-    CommService mService;
+    BluetoothCommService mService;
     boolean mBound = false;
     boolean mSettingsNext = false;
     Handler mHandler = new Handler(new CommCallback());
@@ -30,11 +32,7 @@ public class EngineControl extends AppCompatActivity {
         warp.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                if (!fromUser) {
-                    return;
-                }
-
-                currentSettings.WarpFactor = ((byte) (progress + 1));
+                currentSettings.mWarpFactor = ((byte) (progress + 1));
                 updateSettings();
             }
 
@@ -49,16 +47,42 @@ public class EngineControl extends AppCompatActivity {
             }
         });
 
-        Intent intent = new Intent(this, EngineControl.class);
-        bindService(intent, mConnection, Context.BIND_AUTO_CREATE);
+        RadioGroup corePattern = (RadioGroup) findViewById(R.id.radioGroupPattern);
+        corePattern.setOnCheckedChangeListener(new RadioGroup.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(RadioGroup group, @IdRes int checkedId) {
+                switch (checkedId) {
+                    case R.id.radioButtonStandard:
+                        currentSettings.mCorePattern = 1;
+                        break;
+                    case R.id.radioButtonBreach:
+                        currentSettings.mCorePattern = 2;
+                        break;
+                    case R.id.radioButtonRainbow:
+                        currentSettings.mCorePattern = 3;
+                        break;
+                    case R.id.radioButtonFade:
+                        currentSettings.mCorePattern = 4;
+                        break;
+                    case R.id.radioButtonSlowFade:
+                        currentSettings.mCorePattern = 5;
+                        break;
+                }
+
+                updateSettings();
+            }
+        });
+
     }
 
     @Override
-    protected void onDestroy() {
-        if (mBound) {
-            mService.removeHandler(mHandler);
+    protected void onResume() {
+        super.onResume();
+
+        if (!mBound) {
+            Intent intent = new Intent(this, BluetoothCommService.class);
+            bindService(intent, mConnection, Context.BIND_AUTO_CREATE);
         }
-        super.onDestroy();
     }
 
     /**
@@ -66,10 +90,9 @@ public class EngineControl extends AppCompatActivity {
      */
     private ServiceConnection mConnection = new ServiceConnection() {
         @Override
-        public void onServiceConnected(ComponentName className,
-                                       IBinder service) {
-            // We've bound to CommService, cast the IBinder and get LocalService instance
-            CommService.LocalBinder binder = (CommService.LocalBinder) service;
+        public void onServiceConnected(ComponentName className, IBinder service) {
+            // We've bound to BluetoothCommService, cast the IBinder and get LocalService instance
+            BluetoothCommService.LocalBinder binder = (BluetoothCommService.LocalBinder) service;
             mService = binder.getService();
             mBound = true;
             mService.addHandler(mHandler);
@@ -85,13 +108,13 @@ public class EngineControl extends AppCompatActivity {
         @Override
         public boolean handleMessage(Message message) {
             switch (message.getData().getInt("event")) {
-                case CommService.CONNECTED:
+                case BluetoothCommService.CONNECTED:
                     onConnected();
                     break;
-                case CommService.DISCONNECTED:
+                case BluetoothCommService.DISCONNECTED:
                     onDisconnected();
                     break;
-                case CommService.MESSAGE:
+                case BluetoothCommService.MESSAGE:
                     onMessage(message.getData().getString("data"));
                     break;
             }
@@ -100,7 +123,7 @@ public class EngineControl extends AppCompatActivity {
     }
 
     public void onConnected() {
-        mService.send("?".getBytes());
+
     }
 
     public void onDisconnected() {
@@ -109,54 +132,22 @@ public class EngineControl extends AppCompatActivity {
     }
 
     public void onMessage(String line) {
-        if (line.contains("Current Settings")) {
-            mSettingsNext = true;
-            return;
-        }
-
-        Settings newSettings = new Settings();
-        if (newSettings.ParseString(line)) {
+        Toast.makeText(getApplicationContext(), "Received bluetooth line: " + line, Toast.LENGTH_SHORT).show();
+        Settings newSettings = Settings.ParseString(line);
+        if (newSettings != null) {
+            Toast.makeText(getApplicationContext(), "Received current settings: " + new String(newSettings.Encode()), Toast.LENGTH_SHORT).show();
             updateFromSettings(newSettings);
         }
     }
 
-    public void onRadioButtonClicked(View view) {
-        // We only care about a pattern being selected
-        boolean checked = ((RadioButton) view).isChecked();
-        if (!checked) {
-            return;
-        }
-
-        // Check which radio button was clicked
-        switch (view.getId()) {
-            case R.id.radioButtonStandard:
-                currentSettings.Pattern = 1;
-                break;
-            case R.id.radioButtonBreach:
-                currentSettings.Pattern = 2;
-                break;
-            case R.id.radioButtonRainbow:
-                currentSettings.Pattern = 3;
-                break;
-            case R.id.radioButtonFade:
-                currentSettings.Pattern = 4;
-                break;
-            case R.id.radioButtonSlowFade:
-                currentSettings.Pattern = 5;
-                break;
-        }
-
-        updateSettings();
-    }
-
     private void updateFromSettings(Settings newSettings) {
         SeekBar warp = (SeekBar) findViewById(R.id.seekBarWarp);
-        warp.setProgress(newSettings.WarpFactor - 1, true);
+        warp.setProgress(((int) newSettings.mWarpFactor - 1));
 
         RadioButton b = (RadioButton) findViewById(R.id.radioButtonStandard);
-        ;
-        switch (newSettings.Pattern) {
+        switch (newSettings.mCorePattern) {
             case 1:
+                b = (RadioButton) findViewById(R.id.radioButtonStandard);
                 break;
             case 2:
                 b = (RadioButton) findViewById(R.id.radioButtonBreach);
@@ -177,6 +168,12 @@ public class EngineControl extends AppCompatActivity {
     }
 
     private void updateSettings() {
-        mService.send(currentSettings.Encode());
+        if (mBound) {
+            mService.send(currentSettings.Encode());
+            mService.send("?".getBytes());
+            Toast.makeText(getApplicationContext(), "Settings sent to core: " + new String(currentSettings.Encode()), Toast.LENGTH_SHORT).show();
+        } else {
+            Toast.makeText(getApplicationContext(), "Bluetooth comm service not yet bound", Toast.LENGTH_SHORT).show();
+        }
     }
 }

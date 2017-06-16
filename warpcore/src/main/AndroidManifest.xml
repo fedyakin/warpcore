@@ -16,19 +16,18 @@
         <activity
             android:name=".ConnectActivity"
             android:label="@string/title_activity_connect">
+
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
 
         <service
-            android:name=".CommService"
+            android:name=".BluetoothCommService"
             android:enabled="true"
-            android:exported="true" />
+            android:exported="false" />
 
-        <activity android:name=".RawComm" />
         <activity android:name=".EngineControl"></activity>
     </application>
 

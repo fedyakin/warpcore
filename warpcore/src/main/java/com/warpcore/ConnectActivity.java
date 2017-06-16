@@ -22,9 +22,24 @@ import java.util.Set;
 public class ConnectActivity extends AppCompatActivity {
     private static final int REQUEST_ENABLE_BT = 1;
 
-    CommService mService;
+    BluetoothCommService mService;
     boolean mBound = false;
     Handler mHandler = new Handler(new CommCallback());
+
+    private ServiceConnection mConnection = new ServiceConnection() {
+        @Override
+        public void onServiceConnected(ComponentName className, IBinder service) {
+            BluetoothCommService.LocalBinder binder = (BluetoothCommService.LocalBinder) service;
+            mService = binder.getService();
+            mBound = true;
+            mService.addHandler(mHandler);
+        }
+
+        @Override
+        public void onServiceDisconnected(ComponentName arg0) {
+            mBound = false;
+        }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -35,9 +50,6 @@ public class ConnectActivity extends AppCompatActivity {
     @Override
     protected void onStart() {
         super.onStart();
-
-        Intent intent = new Intent(this, CommService.class);
-        bindService(intent, mConnection, Context.BIND_AUTO_CREATE);
 
         // If the device doesn't support bluetooth, nothing we can do.
         BluetoothAdapter bt = BluetoothAdapter.getDefaultAdapter();
@@ -56,32 +68,26 @@ public class ConnectActivity extends AppCompatActivity {
     }
 
     @Override
-    protected void onDestroy() {
-        if (mBound) {
-            mService.removeHandler(mHandler);
+    protected void onResume() {
+        super.onResume();
+
+        if (!mBound) {
+            Intent intent = new Intent(this, BluetoothCommService.class);
+            boolean result= bindService(intent, mConnection, Context.BIND_AUTO_CREATE);
+            if (!result ){
+                mBound = false;
+            }
         }
-        super.onDestroy();
     }
 
-    /**
-     * Defines callbacks for service binding, passed to bindService()
-     */
-    private ServiceConnection mConnection = new ServiceConnection() {
-        @Override
-        public void onServiceConnected(ComponentName className,
-                                       IBinder service) {
-            // We've bound to CommService, cast the IBinder and get LocalService instance
-            CommService.LocalBinder binder = (CommService.LocalBinder) service;
-            mService = binder.getService();
-            mBound = true;
-            mService.addHandler(mHandler);
+    @Override
+    protected void onPause() {
+        if (mBound) {
+            unbindService(mConnection);
         }
 
-        @Override
-        public void onServiceDisconnected(ComponentName arg0) {
-            mBound = false;
-        }
-    };
+        super.onPause();
+    }
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
@@ -122,8 +128,10 @@ public class ConnectActivity extends AppCompatActivity {
             return;
         }
 
-        SpinnerDevice selectedDevice = (SpinnerDevice) spinDevices.getItemAtPosition(selected);
-        mService.connect(selectedDevice.mDevice);
+        if (mBound) {
+            SpinnerDevice selectedDevice = (SpinnerDevice) spinDevices.getItemAtPosition(selected);
+            mService.connect(selectedDevice.mDevice);
+        }
     }
 
 
@@ -131,7 +139,7 @@ public class ConnectActivity extends AppCompatActivity {
         @Override
         public boolean handleMessage(Message message) {
             switch (message.getData().getInt("event")) {
-                case CommService.CONNECTED:
+                case BluetoothCommService.CONNECTED:
                     onConnected();
             }
             return true;
@@ -139,7 +147,7 @@ public class ConnectActivity extends AppCompatActivity {
     }
 
     public void onConnected() {
-        Intent i = new Intent(getApplicationContext(), RawComm.class);
+        Intent i = new Intent(getApplicationContext(), EngineControl.class);
         startActivity(i);
     }
 }
