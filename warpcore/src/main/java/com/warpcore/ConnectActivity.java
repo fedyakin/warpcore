@@ -65,28 +65,18 @@ public class ConnectActivity extends AppCompatActivity {
         } else {
             populateDeviceList();
         }
+
+        Intent intent = new Intent(this, BluetoothCommService.class);
+        boolean result = bindService(intent, mConnection, Context.BIND_AUTO_CREATE);
     }
 
     @Override
-    protected void onResume() {
-        super.onResume();
-
-        if (!mBound) {
-            Intent intent = new Intent(this, BluetoothCommService.class);
-            boolean result= bindService(intent, mConnection, Context.BIND_AUTO_CREATE);
-            if (!result ){
-                mBound = false;
-            }
-        }
-    }
-
-    @Override
-    protected void onPause() {
+    protected void onDestroy() {
         if (mBound) {
-            unbindService(mConnection);
+            mService.removeHandler(mHandler);
         }
 
-        super.onPause();
+        super.onDestroy();
     }
 
     @Override
@@ -144,6 +134,7 @@ public class ConnectActivity extends AppCompatActivity {
             }
             return true;
         }
+
     }
 
     public void onConnected() {

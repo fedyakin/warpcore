@@ -28,11 +28,15 @@ public class EngineControl extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_engine_control);
 
+        currentSettings.mBrightness = 160;
+        currentSettings.mHue = 160;
+        currentSettings.mSaturation=255;
+
         SeekBar warp = (SeekBar) findViewById(R.id.seekBarWarp);
         warp.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                currentSettings.mWarpFactor = ((byte) (progress + 1));
+                currentSettings.mWarpFactor = progress + 1;
                 updateSettings();
             }
 
@@ -73,16 +77,17 @@ public class EngineControl extends AppCompatActivity {
             }
         });
 
+        Intent intent = new Intent(this, BluetoothCommService.class);
+        bindService(intent, mConnection, Context.BIND_AUTO_CREATE);
     }
 
     @Override
-    protected void onResume() {
-        super.onResume();
-
-        if (!mBound) {
-            Intent intent = new Intent(this, BluetoothCommService.class);
-            bindService(intent, mConnection, Context.BIND_AUTO_CREATE);
+    protected void onDestroy() {
+        if (mBound) {
+            mService.removeHandler(mHandler);
         }
+
+        super.onDestroy();
     }
 
     /**
@@ -96,6 +101,7 @@ public class EngineControl extends AppCompatActivity {
             mService = binder.getService();
             mBound = true;
             mService.addHandler(mHandler);
+            mService.send("?".getBytes());
         }
 
         @Override
@@ -133,7 +139,8 @@ public class EngineControl extends AppCompatActivity {
 
     public void onMessage(String line) {
         Toast.makeText(getApplicationContext(), "Received bluetooth line: " + line, Toast.LENGTH_SHORT).show();
-        Settings newSettings = Settings.ParseString(line);
+        //Settings newSettings = Settings.ParseString(line);
+        Settings newSettings = null;
         if (newSettings != null) {
             Toast.makeText(getApplicationContext(), "Received current settings: " + new String(newSettings.Encode()), Toast.LENGTH_SHORT).show();
             updateFromSettings(newSettings);
@@ -142,7 +149,7 @@ public class EngineControl extends AppCompatActivity {
 
     private void updateFromSettings(Settings newSettings) {
         SeekBar warp = (SeekBar) findViewById(R.id.seekBarWarp);
-        warp.setProgress(((int) newSettings.mWarpFactor - 1));
+        warp.setProgress( newSettings.mWarpFactor - 1);
 
         RadioButton b = (RadioButton) findViewById(R.id.radioButtonStandard);
         switch (newSettings.mCorePattern) {
@@ -170,10 +177,6 @@ public class EngineControl extends AppCompatActivity {
     private void updateSettings() {
         if (mBound) {
             mService.send(currentSettings.Encode());
-            mService.send("?".getBytes());
-            Toast.makeText(getApplicationContext(), "Settings sent to core: " + new String(currentSettings.Encode()), Toast.LENGTH_SHORT).show();
-        } else {
-            Toast.makeText(getApplicationContext(), "Bluetooth comm service not yet bound", Toast.LENGTH_SHORT).show();
         }
     }
 }

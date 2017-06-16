@@ -15,13 +15,14 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.util.ArrayList;
 import java.util.UUID;
 
 public class BluetoothCommService extends Service {
     // This is the object that receives interactions from clients.  See
     // RemoteService for a more complete example.
     private final IBinder mBinder = new LocalBinder();
-    private Handler mHandler = null;
+    private final ArrayList<Handler> mHandlers = new ArrayList<>();
 
     // Thread containing the actual bluetooth processing
     private ConnectedThread mConn = null;
@@ -47,8 +48,14 @@ public class BluetoothCommService extends Service {
     public static final int MESSAGE = 3;
 
     public void addHandler(Handler handler) {
-        synchronized (this) {
-            mHandler = handler;
+        synchronized (mHandlers) {
+            mHandlers.add(handler);
+        }
+    }
+
+    public void removeHandler(Handler handler) {
+        synchronized (mHandlers) {
+            mHandlers.remove(handler);
         }
     }
 
@@ -67,11 +74,11 @@ public class BluetoothCommService extends Service {
         }
     }
 
-    public void shutdown() {
-        if (mConn != null) {
-            mConn.cancel();
-        }
-    }
+//    public void shutdown() {
+//        if (mConn != null) {
+//            mConn.cancel();
+//        }
+//    }
 
     private class ConnectedThread extends Thread {
         // UUID for the hc-o6
@@ -143,17 +150,20 @@ public class BluetoothCommService extends Service {
         }
 
         private void emitMessage(String data) {
+            Toast.makeText(getApplicationContext(), "comm service got data: " + data, Toast.LENGTH_SHORT).show();
             Bundle msgBundle = new Bundle();
             msgBundle.putInt("event", MESSAGE);
-            msgBundle.putString("data", data);
+            msgBundle.putString("data", new String(data));
             sendBundle(msgBundle);
         }
 
         private void sendBundle(Bundle msgBundle) {
-            synchronized (BluetoothCommService.this) {
-                Message msg = mHandler.obtainMessage();
-                msg.setData(msgBundle);
-                msg.sendToTarget();
+            synchronized (BluetoothCommService.this.mHandlers) {
+                for (Handler handler : BluetoothCommService.this.mHandlers) {
+                    Message msg = handler.obtainMessage();
+                    msg.setData(msgBundle);
+                    msg.sendToTarget();
+                }
             }
         }
     }
